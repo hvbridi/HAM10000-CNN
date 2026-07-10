@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skin Lesion Classifier</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #0f172a;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+            margin: 0;
+        }
+
+        .card {
+            background-color: var(--surface);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 1.5rem;
+            color: var(--text);
+        }
+
+        .upload-area {
+            border: 2px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .upload-area:hover {
+            border-color: var(--primary);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .custom-file-upload {
+            display: inline-block;
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #f1f5f9;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        #preview {
+            max-width: 100%;
+            max-height: 250px;
+            margin-top: 15px;
+            border-radius: 6px;
+            display: none;
+            object-fit: cover;
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: background-color 0.2s;
+        }
+
+        .btn:hover:not(:disabled) {
+            background-color: var(--primary-hover);
+        }
+
+        .btn:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+        }
+
+        #result {
+            margin-top: 20px;
+            font-size: 1.1rem;
+            min-height: 24px;
+        }
+
+        .prediction {
+            font-weight: bold;
+            color: #059669; /* Green for success */
+        }
+
+        .error {
+            color: #dc2626; /* Red for errors */
+        }
+
+        .loading {
+            color: #64748b;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>Skin Lesion Classifier</h1>
+        <p>Upload a dermoscopy image for AI analysis.</p>
+
+        <div class="upload-area" onclick="document.getElementById('imageInput').click()">
+            <label class="custom-file-upload">
+                Select Image
+            </label>
+            <input type="file" id="imageInput" accept="image/*" />
+            <br>
+            <img id="preview" alt="Image preview" />
+        </div>
+
+        <button id="submitBtn" class="btn" disabled>Analyze Image</button>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        // Mapping derived directly from your training file:
+        // {'bkl':0, 'nv':1, 'df':2, 'mel':3, 'vasc':4, 'bcc':5, 'akiec':6}
+        const classNames = {
+            0: "Benign keratosis-like lesions (bkl)",
+            1: "Melanocytic nevi (nv)",
+            2: "Dermatofibroma (df)",
+            3: "Melanoma (mel)",
+            4: "Vascular lesions (vasc)",
+            5: "Basal cell carcinoma (bcc)",
+            6: "Actinic keratoses (akiec)",
+            99: 'Please insert a valid image'
+        };
+
+        const imageInput = document.getElementById('imageInput');
+        const preview = document.getElementById('preview');
+        const submitBtn = document.getElementById('submitBtn');
+        const resultDiv = document.getElementById('result');
+
+        // Handle image selection and preview
+        imageInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    preview.src = event.target.result;
+                    preview.style.display = 'inline-block';
+                    submitBtn.disabled = false;
+                    resultDiv.innerHTML = ''; // Clear previous results
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Handle form submission
+        submitBtn.addEventListener('click', async function() {
+            const file = imageInput.files[0];
+            if (!file) return;
+
+            // Prepare the form data. 'file' matches your FastAPI UploadFile parameter name.
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // Update UI to loading state
+            submitBtn.disabled = true;
+            resultDiv.innerHTML = '<span class="loading">Running inference...</span>';
+
+            try {
+                // Pointing to the default FastAPI local address
+                const response = await fetch('http://127.0.0.1:8000/send_image', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+
+                // Your backend returns an integer prediction
+                const predIdx = await response.json(); 
+                
+                // Map the integer to the label
+                const diagnosis = classNames[predIdx] || "Unknown Class";
+
+                resultDiv.innerHTML = `Prediction: <span class="prediction">${diagnosis}</span>`;
+            } catch (error) {
+                console.error("Fetch Error:", error);
+                resultDiv.innerHTML = `<span class="error">Connection Failed. Make sure your FastAPI backend is running. (See note on CORS)</span>`;
+            } finally {
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
